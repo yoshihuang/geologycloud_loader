@@ -9,7 +9,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-sys.path.insert(0, "/home/claude/geologycloud_loader")
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 from qgis.testing import start_app  # noqa: E402
 
@@ -287,6 +287,13 @@ check("current_bbox in lon/lat", bbox and 121.4 < bbox[0] < 121.51 and 25.03 < b
 plugin.dock.set_checked(["Fault", "Stratum"], emit=True)
 check("checking datasets loads layers", wait(lambda: plugin.layers.layer("Fault") is not None and plugin.layers.layer("Fault").featureCount() == 2
                                             and plugin.layers.layer("Stratum").featureCount() == 2), plugin.dock._items["Fault"].text(1))
+check("auto update is off by default", not plugin.dock.auto_check.isChecked())
+check("load warning shown in panel", "負荷" in plugin.dock.load_warning.text())
+REQUESTS.clear()
+canvas.setExtent(tr.transformBoundingBox(QgsRectangle(121.505, 25.005, 121.565, 25.045)))
+wait(lambda: False, 1.5)
+check("auto off: panning sends no requests", not REQUESTS, [r[0] for r in REQUESTS])
+plugin.dock.auto_check.setChecked(True)
 REQUESTS.clear()
 canvas.setExtent(tr.transformBoundingBox(QgsRectangle(121.51, 25.01, 121.57, 25.05)))
 wait(lambda: len(REQUESTS) >= 2, 5)
@@ -308,4 +315,7 @@ check("unload clean", plugin.dock is None)
 server.shutdown()
 failed = [r for r in results if not r[1]]
 print("\n%d checks, %d failed" % (len(results), len(failed)))
-sys.exit(1 if failed else 0)
+sys.stdout.flush()
+# Skip interpreter teardown: the offscreen QGIS test app can crash while
+# destroying Qt objects at exit, which would hide the real result.
+os._exit(1 if failed else 0)

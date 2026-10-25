@@ -4,14 +4,15 @@ qgisMinimumVersion=3.34
 qgisMaximumVersion=4.99
 supportsQt6=True
 description=Load Taiwan Geology Cloud (地質雲) open geological data for the current map view as scratch layers, and export them in one click.
-about=Connects QGIS to the public data supply API of the Geology Cloud value-added application platform (https://www.geologycloud.tw), run by the Geological Survey and Mining Management Agency, MOEA, Taiwan. Tick any of the 23 datasets (1:50,000 / 1:250,000 / 1:500,000 geological maps, dip slopes, rockfalls, debris flows, rock mass strength, hot springs, engineering boreholes, CGPS stations, ...). Whenever the map is panned or zoomed, the plugin downloads the features inside the visible extent and shows them in memory (scratch) layers, symbolised automatically according to the CGS Digital Geological Map Specification v4.4 (symbol code -> pattern, colour, line and marker symbols, with a named legend). All scratch layers can be exported in one click to GeoPackage, Shapefile or GeoJSON, in WGS 84 or TWD97.
-    Requires an internet connection; no extra Python packages. Data licence: Open Government Data License, version 1.0 (Taiwan) - please credit the source.
-    在 QGIS 直接介接經濟部地質調查及礦業管理中心「地質雲加值應用平臺」資料供應服務。勾選資料項目後，移動或縮放地圖即自動下載畫面範圍內的資料並以暫存圖層顯示，並依《經濟部中央地質調查所數值地質圖資料規範（第4.4版）》自動套用圖例符號，可一鍵將所有暫存圖層匯出為 GeoPackage、Shapefile 或 GeoJSON（WGS84 或 TWD97）。資料依政府資料開放授權條款第1版提供，使用時請註明出處。
-version=1.1.4
+about=Connects QGIS to the public data supply API of the Geology Cloud value-added application platform (https://www.geologycloud.tw), run by the Geological Survey and Mining Management Agency, MOEA, Taiwan. Tick any of the 23 datasets (1:50,000 / 1:250,000 / 1:500,000 geological maps, dip slopes, rockfalls, debris flows, rock mass strength, hot springs, engineering boreholes, CGPS stations, ...). The plugin downloads the features inside the visible extent (on demand, or automatically when the map moves if enabled) and shows them in memory (scratch) layers, symbolised automatically according to the CGS Digital Geological Map Specification v4.4 (symbol code -> pattern, colour, line and marker symbols, with a named legend). All scratch layers can be exported in one click to GeoPackage, Shapefile or GeoJSON, in WGS 84 or TWD97.
+    Requires an internet connection; no extra Python packages. Please avoid querying very large areas so as not to overload the Geology Cloud servers. Data licence: Open Government Data License, version 1.0 (Taiwan) - please credit the source.
+    在 QGIS 直接介接經濟部地質調查及礦業管理中心「地質雲加值應用平臺」資料供應服務。勾選資料項目後下載畫面範圍內的資料並以暫存圖層顯示（可選擇移動地圖時自動更新），並依《經濟部中央地質調查所數值地質圖資料規範（第4.4版）》自動套用圖例符號，可一鍵將所有暫存圖層匯出為 GeoPackage、Shapefile 或 GeoJSON（WGS84 或 TWD97）。資料依政府資料開放授權條款第1版提供，使用時請註明出處；請避免查詢過大的範圍，以免造成服務主機負荷過大。
+version=1.1.5
 author=黃敏郎
 email=yoshi.hml@gmail.com
 
-changelog=1.1.4: Fault sawteeth (B4xx), normal-fault squares (B3xx) and detachment teeth (B5xx) moved to the other side of the trace (upper plate side of the Geology Cloud digitising direction).
+changelog=1.1.5: "Update when the map moves" is now off by default; the panel reminds users not to query very large areas to avoid overloading the Geology Cloud servers.
+    1.1.4: Fault sawteeth (B4xx), normal-fault squares (B3xx) and detachment teeth (B5xx) moved to the other side of the trace (upper plate side of the Geology Cloud digitising direction).
     1.1.2: Qt6 / QGIS 4 compatibility - scoped enums only (Qgis.RenderUnit, QgsSymbolLayer.Property).
     1.1.1: Attitude dip angle labelled on the dip (short tick) side; 1:50,000 faults and folds labelled with Name, 1:50,000 strata with Name + Abbrev.
     1.1.0: Layers are drawn with the symbols of the CGS Digital Geological Map Specification v4.4 (數值地質圖資料規範 第4.4版) - area patterns and colours by symbol code, fault/fold/coal-bed line symbols, strike-and-dip markers, landslide patterns, hot spring / borehole / survey point markers; legend classes named after the specification. Styles are embedded so exported GeoPackage/QML keep them.

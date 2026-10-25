@@ -41,8 +41,8 @@ class GeologyCloudDock(QgsDockWidget):
         layout = QVBoxLayout(body)
         layout.setContentsMargins(6, 6, 6, 6)
 
-        hint = QLabel("勾選資料項目後，移動或縮放地圖時會自動下載目前畫面範圍內的資料，"
-                      "以暫存圖層顯示。")
+        hint = QLabel("勾選資料項目後，會下載目前畫面範圍內的資料，以暫存圖層顯示。"
+                      "移動地圖後請按「立即更新」，或勾選「移動地圖時自動更新」。")
         hint.setWordWrap(True)
         layout.addWidget(hint)
 
@@ -71,12 +71,19 @@ class GeologyCloudDock(QgsDockWidget):
         layout.addLayout(buttons)
 
         self.auto_check = QCheckBox("移動地圖時自動更新")
-        self.auto_check.setChecked(True)
+        self.auto_check.setChecked(False)
+        self.auto_check.setToolTip("預設不勾選：每次移動或縮放地圖都會向地質雲主機查詢，請視需要再開啟。")
         self.auto_check.toggled.connect(self.auto_toggled)
         layout.addWidget(self.auto_check)
         self.force_check = QCheckBox("忽略建議範圍（大範圍可能要下載很久）")
-        self.force_check.setToolTip("大型資料（如地層、順向坡、落石）預設只在地圖放大到一定程度時下載。")
+        self.force_check.setToolTip("大型資料（如地層、順向坡、落石）預設只在地圖放大到一定程度時下載。"
+                                    "大範圍查詢會大量請求地質雲主機，請盡量避免。")
         layout.addWidget(self.force_check)
+        self.load_warning = QLabel("⚠ 請避免查詢過大的地圖範圍（例如整個縣市或全臺），"
+                                   "以免造成地質雲服務主機負荷過大；需要大範圍資料時，請分區放大查詢。")
+        self.load_warning.setWordWrap(True)
+        self.load_warning.setStyleSheet("color: #b35900;")
+        layout.addWidget(self.load_warning)
 
         export_box = QGroupBox("匯出暫存圖層")
         form = QFormLayout(export_box)
