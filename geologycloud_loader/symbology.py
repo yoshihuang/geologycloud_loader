@@ -372,18 +372,26 @@ def _decoration(svg_body, size_mm, view, height_units, placement, interval=None,
 
 # Decorations are drawn in 0.1 mm units; +y is the right-hand side of the
 # digitising direction (QGIS rotates the marker with the line).
+# Side of the trace for upper-plate decorations (鋸齒、方塊、圓齒在上盤):
+# -1 = left of the digitising direction, which matches how the Geology Cloud
+# fault lines are digitised (checked by the author against the geological maps).
+UPPER_PLATE_SIDE = -1
+
+
 def _teeth(color, solid=True, shape="triangle"):
     fill = color if solid else "#ffffff"
+    k = UPPER_PLATE_SIDE
     parts = []
     for x in (-20, 0, 20):
         if shape == "triangle":       # 正三角：高 1.375 mm
-            d = "M%s,0 L%s,13.75 L%s,0 Z" % (x - 7.9, x, x + 7.9)
+            d = "M%s,0 L%s,%s L%s,0 Z" % (x - 7.9, x, 13.75 * k, x + 7.9)
             parts.append(_path(d, color, 2.0, fill))
         elif shape == "square":       # 正方形：邊長 1 mm
-            parts.append('<rect x="%s" y="1.5" width="10" height="10" fill="%s" stroke="%s" stroke-width="2"/>'
-                         % (x - 5, fill, color))
+            top = 1.5 if k > 0 else -11.5
+            parts.append('<rect x="%s" y="%s" width="10" height="10" fill="%s" stroke="%s" stroke-width="2"/>'
+                         % (x - 5, top, fill, color))
         else:                         # 圓齒
-            parts.append(_circle(x, 6.5, 5, fill, color, 2.0))
+            parts.append(_circle(x, 6.5 * k, 5, fill, color, 2.0))
     return "".join(parts)
 
 
