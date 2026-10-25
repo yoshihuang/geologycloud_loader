@@ -37,8 +37,13 @@ from qgis.core import (
     QgsSVGFillSymbolLayer,
     QgsSvgMarkerSymbolLayer,
     QgsSymbolLayer,
-    QgsUnitTypes,
 )
+
+# Data-defined angle key: QgsSymbolLayer.Property.Angle on QGIS >= 3.36 / 4.x;
+# QGIS 3.34 uses the older member name inside the same scoped enum.
+ANGLE_PROPERTY = getattr(QgsSymbolLayer.Property, "Angle", None)
+if ANGLE_PROPERTY is None:
+    ANGLE_PROPERTY = getattr(QgsSymbolLayer.Property, "Property" + "Angle")
 
 _HERE = os.path.dirname(__file__)
 with open(os.path.join(_HERE, "spec_symbols.json"), encoding="utf-8") as _handle:
@@ -55,8 +60,7 @@ GRAY = "#787878"
 
 # ---------------------------------------------------------------- helpers
 def _mm(layer):
-    unit = getattr(Qgis, "RenderUnit", None)
-    layer.setOutputUnit(unit.Millimeters if unit is not None else QgsUnitTypes.RenderMillimeters)
+    layer.setOutputUnit(Qgis.RenderUnit.Millimeters)
 
 
 def _embed(svg):
@@ -339,8 +343,7 @@ def _simple_line(color, width, dash=None):
     if dash:
         layer.setUseCustomDashPattern(True)
         layer.setCustomDashVector([float(v) for v in dash])
-        unit = getattr(Qgis, "RenderUnit", None)
-        layer.setCustomDashPatternUnit(unit.Millimeters if unit is not None else QgsUnitTypes.RenderMillimeters)
+        layer.setCustomDashPatternUnit(Qgis.RenderUnit.Millimeters)
     layer.setPenCapStyle(Qt.PenCapStyle.FlatCap)
     return layer
 
@@ -358,12 +361,7 @@ def _decoration(svg_body, size_mm, view, height_units, placement, interval=None,
     marker = _svg_marker(svg_body, size_mm, view, height_units)
     line = QgsMarkerLineSymbolLayer(rotate, interval or 10.0)
     _mm(line)
-    places = getattr(Qgis, "MarkerLinePlacement", None)
-    if places is not None:
-        value = getattr(places, placement)
-        line.setPlacements(getattr(Qgis, "MarkerLinePlacements", lambda v: v)(value))
-    else:  # very old API
-        line.setPlacement(getattr(QgsMarkerLineSymbolLayer, placement))
+    line.setPlacements(Qgis.MarkerLinePlacements(getattr(Qgis.MarkerLinePlacement, placement)))
     if interval:
         line.setInterval(interval)
         # First group close to the start so short lines and legend patches show it.
@@ -487,9 +485,7 @@ def line_symbol(code):
 
 # ---------------------------------------------------------------- point symbols
 def _rotate_by(layer, expression):
-    scoped = getattr(QgsSymbolLayer, "Property", None)
-    key = scoped.Angle if scoped is not None and hasattr(scoped, "Angle") else QgsSymbolLayer.PropertyAngle
-    layer.setDataDefinedProperty(key, QgsProperty.fromExpression(expression))
+    layer.setDataDefinedProperty(ANGLE_PROPERTY, QgsProperty.fromExpression(expression))
 
 
 def _attitude_body(code):
