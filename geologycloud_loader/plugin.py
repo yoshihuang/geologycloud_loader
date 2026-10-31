@@ -22,6 +22,7 @@ from .dock import GeologyCloudDock
 from .exporter import export_layers
 from .fetcher import Fetcher
 from .layers import LayerManager
+from .wms import WmsManager
 
 SETTINGS = "geologycloud_loader/"
 DEBOUNCE_MS = 700
@@ -50,6 +51,7 @@ class GeologyCloudLoader:
         self.iface.addPluginToWebMenu("地質雲資料載入", self.action)
 
         self.layers = LayerManager()
+        self.wms = WmsManager()
         self.fetcher = Fetcher()
         self.fetcher.started.connect(self._on_started)
         self.fetcher.finished.connect(self._on_finished)
@@ -65,6 +67,7 @@ class GeologyCloudLoader:
         self.dock.refresh_requested.connect(lambda: self.refresh(force=True))
         self.dock.export_requested.connect(self.export_all)
         self.dock.auto_toggled.connect(self._on_auto_toggled)
+        self.dock.wms_add_requested.connect(self.add_wms)
         self.dock.force_check.toggled.connect(self._on_force_toggled)
         self.dock.visibilityChanged.connect(self.action.setChecked)
         self.iface.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.dock)
@@ -224,6 +227,31 @@ class GeologyCloudLoader:
             self.dock.set_state(key, "錯誤", message, error=True)
             self.iface.messageBar().pushMessage("地質雲", "%s：%s" % (BY_KEY[key].title, message),
                                                 Qgis.MessageLevel.Warning, 6)
+
+    # -- WMS -------------------------------------------------------------------
+    def add_wms(self, names):
+        if not names:
+            self.dock.wms_status.setText("請先勾選要加入的 WMS 圖層。")
+            return
+        self.iface.mainWindow().setCursor(Qt.CursorShape.WaitCursor)
+        try:
+            added, present, failed = self.wms.add(names)
+        finally:
+            self.iface.mainWindow().unsetCursor()
+        parts = []
+        if added:
+            parts.append("已加入 %d 個 WMS 圖層" % len(added))
+        if present:
+            parts.append("%d 個已在地圖中" % len(present))
+        if failed:
+            parts.append("%d 個無法連線：%s" % (len(failed), "、".join(failed)))
+        self.dock.wms_status.setText("；".join(parts) + "。")
+        if failed:
+            self.iface.messageBar().pushMessage(
+                "地質雲", "WMS 圖層無法載入（請確認網路或服務狀態）：" + "、".join(failed),
+                Qgis.MessageLevel.Warning, 8)
+        elif added:
+            self.dock.clear_wms_checks()
 
     # -- export ----------------------------------------------------------------
     def export_all(self):

@@ -12,6 +12,7 @@ from qgis.PyQt.QtWidgets import (
     QHeaderView,
     QLabel,
     QPushButton,
+    QTabWidget,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -21,6 +22,7 @@ from qgis.gui import QgsDockWidget
 
 from .catalog import DATASETS, GROUPS, LICENSE_URL, SOURCE_TEXT, SWAGGER_URL, span_label
 from .exporter import CRS_CHOICES, FORMATS
+from .wms_catalog import LIST_URL, WMS_GROUPS, WMS_SOURCE_TEXT
 
 KEY_ROLE = Qt.ItemDataRole.UserRole + 1
 
@@ -30,6 +32,7 @@ class GeologyCloudDock(QgsDockWidget):
     refresh_requested = pyqtSignal()
     export_requested = pyqtSignal()
     auto_toggled = pyqtSignal(bool)
+    wms_add_requested = pyqtSignal(list)   # WMS layer names
 
     def __init__(self, parent=None):
         super().__init__("地質雲資料載入", parent)
@@ -37,6 +40,7 @@ class GeologyCloudDock(QgsDockWidget):
         self._items = {}
         self._muted = False
 
+        self.tabs = QTabWidget()
         body = QWidget()
         layout = QVBoxLayout(body)
         layout.setContentsMargins(6, 6, 6, 6)
@@ -111,7 +115,71 @@ class GeologyCloudDock(QgsDockWidget):
         credit.setStyleSheet("color: palette(mid); font-size: 11px;")
         layout.addWidget(credit)
 
-        self.setWidget(body)
+        self.tabs.addTab(body, "地質雲資料")
+        self.tabs.addTab(self._build_wms_tab(), "WMS 圖資")
+        self.setWidget(self.tabs)
+
+    # -- WMS tab ---------------------------------------------------------------
+    def _build_wms_tab(self):
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(6, 6, 6, 6)
+        hint = QLabel("地質調查及礦業管理中心「地質圖資 WMS 服務」，分組與圖層順序同官方 QGIS 專案檔。"
+                      "勾選後按「加入地圖」，會以 WMS 影像圖層加入，由 QGIS 依畫面範圍即時繪製"
+                      "（WMS 影像圖層不包含在「一鍵匯出」中）。")
+        hint.setWordWrap(True)
+        layout.addWidget(hint)
+
+        self.wms_tree = QTreeWidget()
+        self.wms_tree.setHeaderLabels(["WMS 圖層"])
+        self.wms_tree.setRootIsDecorated(True)
+        self.wms_tree.setUniformRowHeights(True)
+        self._wms_items = {}
+        for group in WMS_GROUPS:
+            parent = QTreeWidgetItem(self.wms_tree, [group.title])
+            parent.setFlags(parent.flags() | Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsAutoTristate)
+            parent.setCheckState(0, Qt.CheckState.Unchecked)
+            parent.setToolTip(0, "官方 QGIS 專案檔：%s（%d 個圖層）" % (group.title, len(group.layers)))
+            for layer in group.layers:
+                item = QTreeWidgetItem(parent, [layer.short])
+                item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+                item.setCheckState(0, Qt.CheckState.Unchecked)
+                item.setData(0, KEY_ROLE, layer.name)
+                tip = "%s\nWMS 圖層：%s" % (layer.title, layer.name)
+                if layer.hint:
+                    tip += "\n資料範圍有限，%s" % layer.hint
+                item.setToolTip(0, tip)
+                self._wms_items[layer.name] = item
+        layout.addWidget(self.wms_tree, 1)
+
+        buttons = QHBoxLayout()
+        self.wms_clear_button = QPushButton("全部取消勾選")
+        self.wms_clear_button.clicked.connect(self.clear_wms_checks)
+        self.wms_add_button = QPushButton("加入地圖")
+        self.wms_add_button.setToolTip("把勾選的 WMS 圖層加入「地質調查所 WMS」群組（已加入者不重複加入）")
+        self.wms_add_button.clicked.connect(lambda: self.wms_add_requested.emit(self.checked_wms()))
+        buttons.addWidget(self.wms_clear_button)
+        buttons.addStretch(1)
+        buttons.addWidget(self.wms_add_button)
+        layout.addLayout(buttons)
+
+        self.wms_status = QLabel("")
+        self.wms_status.setWordWrap(True)
+        layout.addWidget(self.wms_status)
+
+        credit = QLabel('圖資來源：<a href="%s">%s</a>' % (LIST_URL, WMS_SOURCE_TEXT))
+        credit.setWordWrap(True)
+        credit.setOpenExternalLinks(True)
+        credit.setStyleSheet("color: palette(mid); font-size: 11px;")
+        layout.addWidget(credit)
+        return page
+
+    def checked_wms(self):
+        return [name for name, item in self._wms_items.items() if item.checkState(0) == Qt.CheckState.Checked]
+
+    def clear_wms_checks(self):
+        for index in range(self.wms_tree.topLevelItemCount()):
+            self.wms_tree.topLevelItem(index).setCheckState(0, Qt.CheckState.Unchecked)
 
     # -- tree ----------------------------------------------------------------
     def _build_tree(self):

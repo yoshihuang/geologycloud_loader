@@ -15,7 +15,7 @@ from qgis.testing import start_app  # noqa: E402
 
 APP = start_app()
 
-from qgis.PyQt.QtCore import QEventLoop, QTimer  # noqa: E402
+from qgis.PyQt.QtCore import QEventLoop, QSize, Qt, QTimer  # noqa: E402
 from qgis.core import QgsProject, QgsVectorLayer, QgsWkbTypes, QgsCoordinateReferenceSystem, QgsRectangle  # noqa: E402
 
 SAMPLES = json.load(open(os.path.join(os.path.dirname(__file__), "samples.json"), encoding="utf-8"))
@@ -309,6 +309,107 @@ wait(lambda: False, 1.2)
 check("outside Taiwan -> no request", plugin.dock._items["Fault"].text(1) == "不在服務範圍" and not REQUESTS)
 plugin.dock.set_checked(["Fault"], emit=True)
 check("unchecking removes layer", plugin.layers.layer("Stratum") is None and plugin.layers.layer("Fault") is not None)
+# ---------------------------------------------------------------- WMS (fake MapGuide WMS)
+from geologycloud_loader.wms_catalog import WMS_GROUPS, WMS_BY_NAME, WMS_GROUP_NAME, wms_uri  # noqa: E402
+WMS_HITS = []
+from qgis.PyQt.QtCore import QBuffer, QByteArray  # noqa: E402
+from qgis.PyQt.QtGui import QImage  # noqa: E402
+_img = QImage(4, 4, QImage.Format.Format_ARGB32)
+_img.fill(0)
+_ba = QByteArray()
+_buf = QBuffer(_ba)
+_buf.open(QBuffer.OpenModeFlag.WriteOnly)
+_img.save(_buf, "PNG")
+PNG = bytes(_ba)
+
+
+class WmsHandler(BaseHTTPRequestHandler):
+    def log_message(self, *args):
+        pass
+
+    def do_GET(self):
+        q = {k.upper(): v[0] for k, v in parse_qs(urlparse(self.path).query, keep_blank_values=True).items()}
+        WMS_HITS.append(q)
+        if q.get("REQUEST", "").lower() == "getcapabilities":
+            base = "http://127.0.0.1:%d/mapagent.fcgi?" % self.server.server_port
+            layers = "".join("<Layer queryable=\"0\"><Name>%s</Name><Title>%s</Title><SRS>EPSG:4326</SRS>"
+                             "<LatLonBoundingBox minx=\"117\" miny=\"21\" maxx=\"123\" maxy=\"27\"/></Layer>"
+                             % (n, n) for n in WMS_BY_NAME)
+            op = "<DCPType><HTTP><Get><OnlineResource xmlns:xlink=\"http://www.w3.org/1999/xlink\" xlink:href=\"%s\"/></Get></HTTP></DCPType>" % base
+            body = ("<?xml version=\"1.0\"?><WMT_MS_Capabilities version=\"1.1.1\"><Service><Name>OGC:WMS</Name><Title>t</Title>"
+                    "<OnlineResource xmlns:xlink=\"http://www.w3.org/1999/xlink\" xlink:href=\"%s\"/></Service><Capability><Request>"
+                    "<GetCapabilities><Format>application/vnd.ogc.wms_xml</Format>%s</GetCapabilities>"
+                    "<GetMap><Format>image/png</Format>%s</GetMap></Request><Exception><Format>application/vnd.ogc.se_xml</Format></Exception>"
+                    "<Layer><Title>root</Title><SRS>EPSG:4326</SRS><LatLonBoundingBox minx=\"117\" miny=\"21\" maxx=\"123\" maxy=\"27\"/>%s</Layer>"
+                    "</Capability></WMT_MS_Capabilities>" % (base, op, op, layers)).encode()
+            ctype = "application/vnd.ogc.wms_xml"
+        else:
+            body, ctype = PNG, "image/png"
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+
+wms_server = ThreadingHTTPServer(("127.0.0.1", 0), WmsHandler)
+threading.Thread(target=wms_server.serve_forever, daemon=True).start()
+FAKE_WMS = "http://127.0.0.1:%d/mapagent.fcgi?version=1.0.0&format=image/png" % wms_server.server_port
+
+check("WMS catalog: 9 official project groups", len(WMS_GROUPS) == 9, [g.title for g in WMS_GROUPS])
+check("WMS catalog: 59 layers, unique names", len(WMS_BY_NAME) == 59 and sum(len(g.layers) for g in WMS_GROUPS) == 59)
+real_uri = wms_uri("WMS/50K_Geomap_fault")
+check("WMS uri like official project (crs, png, layers, url with version)",
+      all(t in real_uri for t in ("crs=EPSG:4326", "format=image/png", "layers=WMS/50K_Geomap_fault",
+                                  "url=https://geomap.gsmma.gov.tw/mapguide/mapagent/mapagent.fcgi?version%3D1.0.0")), real_uri)
+check("WMS dock tab lists every layer", len(plugin.dock._wms_items) == 59 and plugin.dock.tabs.count() == 2,
+      plugin.dock.tabs.count())
+plugin.wms.url = FAKE_WMS
+plugin.add_wms([])
+check("WMS add with nothing checked -> hint", "請先勾選" in plugin.dock.wms_status.text())
+api_group = project.layerTreeRoot().findGroup(GROUP_NAME)
+# tick a whole group (tristate) plus single layers from two others
+g50 = plugin.dock.wms_tree.topLevelItem(0)
+g50.child(19).setCheckState(0, Qt.CheckState.Checked)   # 地層 (bottom)
+g50.child(4).setCheckState(0, Qt.CheckState.Checked)    # 斷層
+plugin.dock.wms_tree.topLevelItem(6).setCheckState(0, Qt.CheckState.Checked)   # 地質敏感區 group (4)
+picked = plugin.dock.checked_wms()
+check("WMS group checkbox ticks its layers", len(picked) == 6, picked)
+plugin.dock.wms_add_requested.emit(picked)
+wroot = project.layerTreeRoot().findGroup(WMS_GROUP_NAME)
+check("WMS layers added + valid", wroot is not None and len(wroot.findLayers()) == 6
+      and all(n.layer().isValid() for n in wroot.findLayers()), plugin.dock.wms_status.text())
+check("WMS sub-groups follow official order", [c.name() for c in wroot.children()] == ["1/50,000 臺灣地質圖", "地質敏感區相關圖資"],
+      [c.name() for c in wroot.children()])
+check("WMS group sits below the GeologyCloud vector group",
+      [c.name() for c in project.layerTreeRoot().children()][:2] == [GROUP_NAME, WMS_GROUP_NAME],
+      [c.name() for c in project.layerTreeRoot().children()])
+check("checks cleared after adding", plugin.dock.checked_wms() == [])
+plugin.dock.wms_add_requested.emit(["WMS/50K_Geomap_fold", "WMS/50K_Geomap_fault"])
+names50 = [n.layer().name() for n in wroot.findGroup("1/50,000 臺灣地質圖").findLayers()]
+check("WMS draw order inside group (褶皺, 斷層 above 地層)",
+      names50 == ["1/50,000_臺灣地質圖-褶皺", "1/50,000_臺灣地質圖-斷層", "1/50,000_臺灣地質圖-地層"], names50)
+check("WMS no duplicates", "1 個已在地圖中" in plugin.dock.wms_status.text(), plugin.dock.wms_status.text())
+from qgis.core import QgsMapSettings, QgsMapRendererSequentialJob  # noqa: E402
+fault = [n.layer() for n in wroot.findLayers() if n.layer().name().endswith("-斷層")][0]
+ms = QgsMapSettings()
+ms.setLayers([fault])
+ms.setDestinationCrs(QgsCoordinateReferenceSystem("EPSG:4326"))
+ms.setExtent(QgsRectangle(121.5, 25.0, 121.6, 25.1))
+ms.setOutputSize(QSize(64, 64))
+job = QgsMapRendererSequentialJob(ms)
+job.start()
+job.waitForFinished()
+gm = [h for h in WMS_HITS if h.get("REQUEST", "").lower() == "getmap"]
+check("WMS GetMap uses official layer / png / EPSG:4326",
+      gm and gm[-1].get("LAYERS") == "WMS/50K_Geomap_fault" and gm[-1].get("FORMAT") == "image/png"
+      and "4326" in (gm[-1].get("SRS") or gm[-1].get("CRS") or ""), gm[-1] if gm else WMS_HITS[-1:])
+check("WMS layers not part of scratch-layer export", all(l.providerType() == "memory" for l in plugin.layers.layers()))
+plugin.wms.url = "http://127.0.0.1:9/none?version=1.0.0"
+plugin.dock.wms_add_requested.emit(["WMS/Spring_2014"])
+check("WMS unreachable -> reported, nothing added", "無法連線" in plugin.dock.wms_status.text()
+      and "WMS/Spring_2014" not in plugin.wms.existing(), plugin.dock.wms_status.text())
+wms_server.shutdown()
 plugin.unload()
 check("unload clean", plugin.dock is None)
 
